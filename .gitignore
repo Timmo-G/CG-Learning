@@ -399,3 +399,10 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
+
+# VS Code 配置文件 (个人路径不上传)
+.vscode/
+
+# CMake 构建目录 (防止生成的垃圾上传)
+build/
+out/
