@@ -241,3 +241,30 @@ glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
 glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 ```
 
+
+
+#### 1.关于EBO和VBO的作用
+
+1. VBO 解决的是 **CPU 到 GPU 的传输效率问题**。它将顶点数据一次性存入显存，减少了每帧渲染时的总线带宽压力。
+2. EBO 解决的是 **数据冗余与内存优化问题**。通过将几何拓扑关系（索引）与几何位置数据（坐标）分离，EBO 实现了顶点的复用。在复杂的建筑模型渲染中，使用 EBO 可以大幅降低显存占用，并提升缓存命中率（Vertex Cache），因为 GPU 可以识别出哪些点是已经被处理过的。
+
+
+
+#### 2.关于EBO的原理，VAO与VBO,EBO关系
+
+实际上是定点表 + 顺序表；
+
+在VAO已经被绑定的前提下，绑定VBO和EBO；
+
+VAO相当于一个文件夹，里面必须存放VBO和EBO。
+
+### 3.生成 ID 
+
+1. **glGenBuffers (生成 ID)**：
+   你走到柜台说：“我要开个户。” 柜员给你一个**账号**（比如 1001）。
+   - 此时：你手里只有个号码，账户里没钱，银行也没给你准备具体的保险柜。
+2. **glBindBuffer (绑定)**：
+   你跟柜员说：“我现在要往 1001 账号里操作。”
+   - 此时：银行才真正为你分配了一块空间。
+3. **glBufferData (存钱)**：
+   你把钱（顶点坐标）递给柜员，存入当前的账户。
