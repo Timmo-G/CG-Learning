@@ -1,5 +1,5 @@
 - [Day 1 代码已同步](./LiteBIM-Viewer/src/main.cpp)
-
+- [Day 2 代码已同步](./LiteBIM-Viewer/src/main.cpp)
 
 
 
