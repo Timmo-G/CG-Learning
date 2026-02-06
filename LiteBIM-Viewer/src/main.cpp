@@ -4,13 +4,21 @@
 #include <GLFW/glfw3.h>
 #include <iostream>
 
+#include <glm/glm/glm.hpp>
+#include <glm/glm/gtc/matrix_transform.hpp>
+#include <glm/glm/gtc/type_ptr.hpp>
+
+
 //顶点着色器：将3D坐标传给gpu的正确位置
 const char* vertexShaderSource = "#version 330 core\n"//OpenGL的3.3核心模式
 "layout (location = 0) in vec3 aPos;\n"//接收0号属性：一个三维向量
+"uniform mat4 transform;\n"  // 确保名字是 transform，声明一个 4x4 的统一矩阵[2.6更新]
 "void main()\n"
 "{\n"
-"   gl_Position = vec4(aPos.x, aPos.y, aPos.z, 1.0);\n"// 赋值给内置变量，1.0 是齐次坐标 w
+"   // 核心：必须让坐标乘以矩阵！\n"
+"   gl_Position = transform * vec4(aPos, 1.0f);\n"// 赋值给内置变量，1.0 是齐次坐标 w[2.6更新]
 "}\0";
+
 //片段编译器编码：// 运行在显卡上的小程序。决定每个像素最终显示什么颜色。
 const char* fragmentShaderSource = "#version 330 core\n"
 "out vec4 FragColor;\n"// 输出变量：最终颜色
@@ -28,7 +36,7 @@ int main() {
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);// 4. 采用“核心模式”（去掉老旧功能）
 
     // 创建窗口：宽，高，标题，是否全屏，是否共享资源
-    GLFWwindow* window = glfwCreateWindow(800, 600, "LiteBIM Window - Day 2", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(800, 600, "LiteBIM Window - Day 3", NULL, NULL);
     //报错处理：创建窗口失败
     if (window == NULL) {
         std::cout << "Failed to create GLFW window" << std::endl;
@@ -63,7 +71,7 @@ int main() {
     glDeleteShader(vertexShader);
     glDeleteShader(fragmentShader);
 
-
+ 
     //VAO与VBO，将内存里的坐标搬到显存里
     float vertices[] = {
      0.5f,  0.5f, 0.0f,  // 0: 右上
@@ -111,11 +119,21 @@ int main() {
         // 激活着色器程序
         glUseProgram(shaderProgram);
 
-        // 绑定我们要用的说明书 (VAO)
-        glBindVertexArray(VAO);
+        glm::mat4 trans = glm::mat4(1.0f);
+        trans = glm::rotate(trans, (float)glfwGetTime(), glm::vec3(0.0f, 0.0f, 1.0f));
+        trans = glm::scale(trans, glm::vec3(0.5f, 0.5f, 0.5f));
 
-        // 真正画三角形的指令：从第0个点开始，画3个点
+        unsigned int transformLoc = glGetUniformLocation(shaderProgram, "transform");
+        glUniformMatrix4fv(transformLoc, 1, GL_FALSE, glm::value_ptr(trans));
+       
+
+        // 绑定VAO
+        glBindVertexArray(VAO);
+        // 三角形的指令：从第0个点开始，画3个点
         glDrawElements(GL_TRIANGLES, 9, GL_UNSIGNED_INT, 0);
+
+        
+
 
         // 交换缓冲区
         glfwSwapBuffers(window);
