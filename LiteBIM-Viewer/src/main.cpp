@@ -6,9 +6,12 @@
 #include <glm/glm/glm.hpp>
 #include <glm/glm/gtc/matrix_transform.hpp>
 #include <glm/glm/gtc/type_ptr.hpp>
+
 //顶点着色器：将3D坐标传给gpu的正确位置
 const char* vertexShaderSource = "#version 330 core\n"//OpenGL的3.3核心模式
 "layout (location = 0) in vec3 aPos;\n"//接收0号属性：一个三维向量
+"layout (location = 1) in vec3 aColor;"
+"out vec3 ourColor;\n"
 "uniform mat4 transform;\n"  // 确保名字是 transform，声明一个 4x4 的统一矩阵[2.6更新]
 "uniform mat4 model;\n"
 "uniform mat4 view;\n"
@@ -17,14 +20,75 @@ const char* vertexShaderSource = "#version 330 core\n"//OpenGL的3.3核心模式
 "{\n"
 "   // 核心：必须让坐标乘以矩阵！\n"
 "  gl_Position = projection * view * model * vec4(aPos, 1.0f);;\n"// 赋值给内置变量，1.0 是齐次坐标 w[2.6更新]
+"   ourColor = aColor;\n"
 "}\0";
-//片段编译器编码：// 运行在显卡上的小程序。决定每个像素最终显示什么颜色。
+//片段编译器编码：运行在显卡上的小程序。决定每个像素最终显示什么颜色。
 const char* fragmentShaderSource = "#version 330 core\n"
 "out vec4 FragColor;\n"// 输出变量：最终颜色
+"in vec3 ourColor;\n"
 "void main()\n"
 "{\n"
-"   FragColor = vec4(0.5f, 0.5f, 0.2f, 1.0f); // 绿色\n"// 赋值颜色 (R, G, B, Alpha)
+"   FragColor = vec4(ourColor, 1.0f);\n"// 赋值颜色 (R, G, B, Alpha)
 "}\n\0";
+//摄像机参数[2.25更新]
+glm::vec3 cameraPos = glm::vec3(0.0f, 0.0f, 3.0f); // 摄像机位置
+glm::vec3 cameraFront = glm::vec3(0.0f, 0.0f, -1.0f); // 看向前方
+glm::vec3 cameraUp = glm::vec3(0.0f, 1.0f, 0.0f); // 头顶向上
+//设定移动速度[2.25更新]
+float deltaTime = 0.0f; // 当前帧与上一帧的时间差
+float lastFrame = 0.0f; // 上一帧的时间
+//设定按键映射
+void processInput(GLFWwindow* window, float deltaTime) {
+    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+        glfwSetWindowShouldClose(window, true);
+    float cameraSpeed = 2.5f * deltaTime; // 调整这个系数可以改移动速度
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+        cameraPos += cameraSpeed * cameraFront;
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+        cameraPos -= cameraSpeed * cameraFront;
+    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+        cameraPos -= glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
+    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+        cameraPos += glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
+}
+// 鼠标状态记录[3.1更新]
+bool firstMouse = true;    // 用于判断是不是第一次移动鼠标
+float yaw = -90.0f;      // 偏航角：初始设为 -90 度，这样你一开机就是看向前方 (-Z方向)
+float pitch = 0.0f;       // 俯仰角：初始 0 度（平视）
+float lastX = 400.0f;     // 鼠标上一次的 X 位置（假设窗口 800x600，初始定在中心）
+float lastY = 300.0f;     // 鼠标上一次的 Y 位置
+//设置鼠标映射_让物体跟随鼠标移动[3.1更新]
+void mouse_callback(GLFWwindow* window, double xposIn, double yposIn) {
+    float xpos = static_cast<float>(xposIn);
+    float ypos = static_cast<float>(yposIn);
+    if (firstMouse) {
+        lastX = xpos;
+        lastY = ypos;
+        firstMouse = false;
+    }
+    // 1. 计算鼠标位移
+    float xoffset = lastX - xpos;
+    float yoffset = ypos - lastY; // Y是反的
+    lastX = xpos;
+    lastY = ypos;
+    // 2. 灵敏度过滤
+    float sensitivity = 0.1f;
+    xoffset *= sensitivity;
+    yoffset *= sensitivity;
+    // 3. 更新角度
+    yaw += xoffset;
+    pitch += yoffset;
+    // 4. 约束：防止抬头抬过头把自己翻过去
+    if (pitch > 89.0f) pitch = 89.0f;
+    if (pitch < -89.0f) pitch = -89.0f;
+    // 5. 将角度转回方向向量 (这是坐标系变换的核心)
+    glm::vec3 front;
+    front.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+    front.y = sin(glm::radians(pitch));
+    front.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+    cameraFront = glm::normalize(front);
+    std::cout << yaw << std::endl;
+}
 int main() {
     // 初始化 GLFW
     glfwInit();//启动GLFW引擎
@@ -32,7 +96,7 @@ int main() {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);//明确3.3版本
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);// 4. 采用“核心模式”（去掉老旧功能）
     // 创建窗口：宽，高，标题，是否全屏，是否共享资源
-    GLFWwindow* window = glfwCreateWindow(800, 600, "LiteBIM Window - Day 4", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(2560, 1440, "LiteBIM Window - Day 5", NULL, NULL);
     //报错处理：创建窗口失败
     if (window == NULL) {
         std::cout << "Failed to create GLFW window" << std::endl;
@@ -40,6 +104,9 @@ int main() {
         return -1;
     }
     glfwMakeContextCurrent(window);//确定在当前窗口画图
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); //[3.1更新]
+    //处理鼠标输入[3.1更新]
+    glfwSetCursorPosCallback(window, mouse_callback);
     // 初始化 GLAD ,必须在创建窗口之后进行，因为它要根据窗口环境找显卡函数
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
         std::cout << "Failed to initialize GLAD" << std::endl;
@@ -58,21 +125,27 @@ int main() {
     glAttachShader(shaderProgram, vertexShader);
     glAttachShader(shaderProgram, fragmentShader);
     glLinkProgram(shaderProgram);
-    // 4. 删除不需要的着色器（已经链接好了）
+    // 4. 删除不需要的着色器
     glDeleteShader(vertexShader);
     glDeleteShader(fragmentShader);
     //VAO与VBO，将内存里的坐标搬到显存里
-    float vertices[] = {
-     0.5f,  0.5f, 0.0f,  // 0: 右上
-     0.5f, -0.5f, 0.0f,  // 1: 右下
-    -0.5f, -0.5f, 0.0f,  // 2: 左下
-    -0.5f,  0.5f, 0.0f,  // 3: 左上
-     0.0f,  0.5f, 0.0f   // 4: 中上
+   float vertices[] = {
+     -0.5f, -0.5f, -0.5f,  1.0f, 0.0f, 0.0f, // 0: 红
+     0.5f, -0.5f, -0.5f,  0.0f, 1.0f, 0.0f, // 1: 绿
+     0.5f,  0.5f, -0.5f,  0.0f, 0.0f, 1.0f, // 2: 蓝
+    -0.5f,  0.5f, -0.5f,  1.0f, 1.0f, 0.0f, // 3: 黄
+    -0.5f, -0.5f,  0.5f,  1.0f, 0.0f, 1.0f, // 4: 紫
+     0.5f, -0.5f,  0.5f,  0.0f, 1.0f, 1.0f, // 5: 青
+     0.5f,  0.5f,  0.5f,  1.0f, 1.0f, 1.0f, // 6: 白
+    -0.5f,  0.5f,  0.5f,  0.0f, 0.0f, 0.0f  // 7: 黑
     };
     unsigned int indices[] = {
-    0, 1, 2, // 第一个三角形
-    1, 2, 3, // 第二个三角形
-    2, 4, 1  // 第三个三角形
+    0, 1, 2, 2, 3, 0,  // 后平面
+    4, 5, 6, 6, 7, 4,  // 前平面
+    0, 4, 7, 7, 3, 0,  // 左平面
+    1, 5, 6, 6, 2, 1,  // 右平面
+    0, 1, 5, 5, 4, 0,  // 下平面
+    3, 2, 6, 6, 7, 3   // 上平面
     };
     unsigned int VBO, VAO, EBO;
     glGenVertexArrays(1, &VAO); // 生成说明书ID
@@ -83,45 +156,46 @@ int main() {
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
     glBindBuffer(GL_ARRAY_BUFFER, VBO); // 绑定缓冲
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW); // 把数据运进缓冲
-    // 告诉显卡：仓库里的数据，每3个float是一组，对应的位置是0
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    // 告诉显卡：数据每3个float是一组，对应的位置是0
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0); // 开启0号属性
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
     glEnable(GL_DEPTH_TEST);//开启深度测试 
     // 渲染循环
     while (!glfwWindowShouldClose(window)) {
-        // 输入检测：是否接入了esc
-        if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
-            glfwSetWindowShouldClose(window, true);
-        // 渲染指令：把屏幕清空
+        // A.每一帧最开始：计算时间增量[2.25更新]
+        float currentFrame = (float)glfwGetTime();
+        deltaTime = currentFrame - lastFrame;
+        lastFrame = currentFrame;
+        // B.处理键盘输入[2.25更新]
+        processInput(window, deltaTime);
+        // C.渲染准备
         glClearColor(0.3f, 0.3f, 0.4f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        // 激活着色器程序
         glUseProgram(shaderProgram);
-        //计算MVP矩阵
+        // D.计算 MVP 矩阵
         glm::mat4 model = glm::mat4(1.0f);
-        glm::mat4 view = glm::mat4(1.0f);
-        glm::mat4 projection = glm::mat4(1.0f);    
-        // 模型：躺下并自转并缩放
+        glm::mat4 projection = glm::mat4(1.0f);
+        glm::mat4 view = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);//[2.25更新]
+
+        //Model矩阵
         model = glm::rotate(model, glm::radians(-55.0f), glm::vec3(1.0f, 0.0f, 0.0f));
         model = glm::rotate(model, (float)glfwGetTime() * glm::radians(50.0f), glm::vec3(0.5f, 1.0f, 0.0f));
         model = glm::scale(model, glm::vec3(0.5f, 0.5f, 0.5f));
-        // 观察：摄像机后退 3 个单位 (注意：场景移动和摄像机移动是反的)
-        view = glm::translate(view, glm::vec3(0.0f, 0.0f, -3.0f));
-        // 投影：45度视野, 宽高比, 近平面0.1, 远平面100
-        projection = glm::perspective(glm::radians(45.0f), 800.0f / 600.0f, 0.1f, 100.0f);     
-        // 传值给 Shader
+      
+        //Projection矩阵
+        projection = glm::perspective(glm::radians(45.0f), 2560.0f / 1440.0f, 0.1f, 100.0f);
+        // E.传值给Shader
         glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(model));
         glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "view"), 1, GL_FALSE, glm::value_ptr(view));
         glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
-        // 绑定VAO
+        // F.绘制
         glBindVertexArray(VAO);
-        // 三角形的指令：从第0个点开始，画9个点
-        glDrawElements(GL_TRIANGLES, 9, GL_UNSIGNED_INT, 0);
-        // 交换缓冲区
+        glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
     glfwTerminate();
-
     return 0;
 }
